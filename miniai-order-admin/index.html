@@ -22,34 +22,73 @@
     <section class="card">
       <div class="muted">Doanh thu</div>
       <strong id="revenue"></strong>
-      <p class="muted">Khách và số tiền chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+      <p class="muted">Khách, số điện thoại, địa chỉ, tiền hàng và phí ship chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+      <p>
+        <button data-filter="">Tất cả</button>
+        <button data-filter="pending">Chờ xác nhận</button>
+        <button data-filter="shipping">Đang giao</button>
+        <button data-filter="delivered">Đã giao</button>
+        <button data-filter="cancelled">Đã hủy</button>
+      </p>
     </section>
     <table>
       <thead>
-        <tr><th>Mã</th><th>Khách</th><th>Tiền</th><th>Trạng thái</th><th>Thao tác</th></tr>
+        <tr>
+          <th>Mã</th><th>Khách hàng</th><th>Hàng và tiền</th><th>Thanh toán và giao hàng</th><th>Trạng thái</th><th>Thao tác</th>
+        </tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
+    <section class="card" id="detail"></section>
   </main>
   <script>
     const money = new Intl.NumberFormat("vi-VN");
+    let filter = "";
+    function actions(order) {
+      return `
+        ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
+        ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
+        ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
+        <button data-open="${order.id}">Chi tiết</button>`;
+    }
     async function load() {
-      const data = await fetch("/api/orders/order").then((res) => res.json());
+      const data = await fetch("/api/orders/order" + (filter ? `?status=${filter}` : "")).then((res) => res.json());
       document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
       document.getElementById("rows").innerHTML = data.orders.map((order) => `
         <tr>
           <td>#${order.id}</td>
-          <td><input readonly value="${order.customer}" /></td>
-          <td><input readonly value="${money.format(order.amount)}đ" /></td>
+          <td>${order.customer}<br><span class="muted">${order.phone}</span></td>
+          <td>${money.format(order.amount)}đ<br><span class="muted">Ship ${money.format(order.shippingFee)}đ</span></td>
+          <td>${order.payment}<br><span class="muted">${order.carrier}</span></td>
           <td>${order.statusLabel}${order.cancelReason ? " (" + order.cancelReason + ")" : ""}</td>
-          <td>
-            ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
-            ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
-            ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
-          </td>
+          <td>${actions(order)}</td>
         </tr>`).join("");
     }
-    document.getElementById("rows").onclick = async (event) => {
+    async function openDetail(id) {
+      const order = await fetch(`/api/orders/order/${id}`).then((res) => res.json());
+      document.getElementById("detail").innerHTML = `
+        <h2>Chi tiết #${order.id}</h2>
+        <p>Khách: ${order.customer}</p>
+        <p>Điện thoại: ${order.phone}</p>
+        <p>Địa chỉ: ${order.address}</p>
+        <p>Giá trị: ${money.format(order.amount)}đ</p>
+        <p>Phí ship: ${money.format(order.shippingFee)}đ</p>
+        <p>Thanh toán: ${order.payment} · ${order.carrier}</p>
+        <p>Trạng thái: ${order.statusLabel}</p>
+        <div>${actions(order)}</div>`;
+    }
+    document.querySelector("main").onclick = async (event) => {
+      const filterButton = event.target.closest("[data-filter]");
+      if (filterButton) {
+        filter = filterButton.dataset.filter;
+        await load();
+        return;
+      }
+      const open = event.target.closest("[data-open]");
+      if (open) {
+        await openDetail(open.dataset.open);
+        return;
+      }
       const button = event.target.closest("button");
       if (!button) return;
       const body = { status: button.dataset.status };

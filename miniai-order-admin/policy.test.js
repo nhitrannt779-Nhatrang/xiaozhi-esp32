@@ -41,6 +41,14 @@ async function main() {
     const list = await request(port, "GET", "/api/orders/order");
     assert.strictEqual(list.status, 200);
     assert.ok(list.body.revenue > 0);
+    assert.ok(list.body.orders[0].phone);
+
+    const filtered = await request(port, "GET", "/api/orders/order?status=shipping");
+    assert.ok(filtered.body.orders.every((order) => order.status === "shipping"));
+
+    const detail = await request(port, "GET", "/api/orders/order/10482");
+    assert.strictEqual(detail.status, 200);
+    assert.strictEqual(detail.body.customer, "Nguyễn Thu Hà");
 
     const removed = await request(port, "DELETE", "/api/orders/order/10482");
     assert.strictEqual(removed.status, 403);
@@ -53,7 +61,7 @@ async function main() {
 
     const smuggled = await request(port, "POST", "/api/orders/order/10482/status", {
       status: "shipping",
-      amount: 1,
+      phone: "0999",
     });
     assert.strictEqual(smuggled.status, 403);
 

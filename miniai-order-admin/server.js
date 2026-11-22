@@ -4,9 +4,42 @@ const path = require("path");
 const { STATUS_LABELS, assertAdmin, rejectWrite, changeStatus } = require("./policy");
 
 const orders = [
-  { id: "10482", customer: "Nguyễn Thu Hà", amount: 6200000, status: "pending", cancelReason: "" },
-  { id: "10481", customer: "Trần Minh Khoa", amount: 7400000, status: "shipping", cancelReason: "" },
-  { id: "10479", customer: "Lê Hoàng Anh", amount: 5000000, status: "delivered", cancelReason: "" },
+  {
+    id: "10482",
+    customer: "Nguyễn Thu Hà",
+    phone: "0901000001",
+    address: "Nha Trang",
+    amount: 6200000,
+    shippingFee: 25000,
+    payment: "Chuyển khoản",
+    carrier: "Chưa chọn",
+    status: "pending",
+    cancelReason: "",
+  },
+  {
+    id: "10481",
+    customer: "Trần Minh Khoa",
+    phone: "0901000002",
+    address: "Hà Nội",
+    amount: 7400000,
+    shippingFee: 30000,
+    payment: "COD",
+    carrier: "GHN",
+    status: "shipping",
+    cancelReason: "",
+  },
+  {
+    id: "10479",
+    customer: "Lê Hoàng Anh",
+    phone: "0901000003",
+    address: "Đà Nẵng",
+    amount: 5000000,
+    shippingFee: 20000,
+    payment: "Đã thanh toán",
+    carrier: "GHTK",
+    status: "delivered",
+    cancelReason: "",
+  },
 ];
 
 function roleOf(req) {
@@ -36,14 +69,16 @@ function readBody(req) {
   });
 }
 
-function summary() {
+function present(order) {
+  return { ...order, statusLabel: STATUS_LABELS[order.status] };
+}
+
+function summary(status) {
+  const visible = status ? orders.filter((order) => order.status === status) : orders;
   const revenue = orders
     .filter((order) => order.status !== "cancelled")
     .reduce((total, order) => total + order.amount, 0);
-  return {
-    revenue,
-    orders: orders.map((order) => ({ ...order, statusLabel: STATUS_LABELS[order.status] })),
-  };
+  return { revenue, orders: visible.map(present) };
 }
 
 async function handle(req, res) {
@@ -55,14 +90,26 @@ async function handle(req, res) {
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/orders/order") {
-    return send(res, 200, summary());
+    return send(res, 200, summary(url.searchParams.get("status") || ""));
+  }
+
+  const detailMatch = url.pathname.match(/^\/api\/orders\/order\/(\d+)$/);
+  if (req.method === "GET" && detailMatch) {
+    const order = orders.find((item) => item.id === detailMatch[1]);
+    if (!order) {
+      const error = new Error("Không thấy đơn");
+      error.status = 404;
+      throw error;
+    }
+    return send(res, 200, present(order));
   }
 
   const statusMatch = url.pathname.match(/^\/api\/orders\/order\/(\d+)\/status$/);
   if (req.method === "POST" && statusMatch) {
     assertAdmin(roleOf(req));
     const body = await readBody(req);
-    if ("customer" in body || "amount" in body) {
+    const locked = ["customer", "phone", "address", "amount", "shippingFee", "payment", "carrier"];
+    if (locked.some((field) => field in body)) {
       rejectWrite("Admin không được sửa tiền hoặc thông tin khách");
     }
     const order = orders.find((item) => item.id === statusMatch[1]);
@@ -73,7 +120,7 @@ async function handle(req, res) {
     }
     const next = changeStatus(order, body.status, body.reason);
     Object.assign(order, next);
-    return send(res, 200, { ...order, statusLabel: STATUS_LABELS[order.status] });
+    return send(res, 200, present(order));
   }
 
   if (req.method === "DELETE" && /^\/api\/orders\/order\/\d+$/.test(url.pathname)) {
