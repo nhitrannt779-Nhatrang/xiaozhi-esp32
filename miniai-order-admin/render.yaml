@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: miniai-order-admin
+    runtime: node
+    buildCommand: echo ready
+    startCommand: node server.js

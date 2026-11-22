@@ -29,7 +29,8 @@ function createServer() {
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 8787);
-  createServer().listen(port, "127.0.0.1");
+  const host = process.env.HOST || "0.0.0.0";
+  createServer().listen(port, host);
 }
 
 module.exports = { createServer };
