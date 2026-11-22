@@ -15,6 +15,7 @@ const orders = [
     carrier: "Chưa chọn",
     status: "pending",
     cancelReason: "",
+    items: [{ name: "Loa MiniAI", quantity: 1, price: 6200000 }],
   },
   {
     id: "10481",
@@ -27,6 +28,7 @@ const orders = [
     carrier: "GHN",
     status: "shipping",
     cancelReason: "",
+    items: [{ name: "Tai nghe MiniAI", quantity: 2, price: 3700000 }],
   },
   {
     id: "10479",
@@ -39,6 +41,7 @@ const orders = [
     carrier: "GHTK",
     status: "delivered",
     cancelReason: "",
+    items: [{ name: "Mic MiniAI", quantity: 1, price: 5000000 }],
   },
 ];
 
@@ -73,8 +76,13 @@ function present(order) {
   return { ...order, statusLabel: STATUS_LABELS[order.status] };
 }
 
-function summary(status) {
-  const visible = status ? orders.filter((order) => order.status === status) : orders;
+function summary(status, query) {
+  const needle = (query || "").trim().toLowerCase();
+  const visible = orders.filter((order) => {
+    if (status && order.status !== status) return false;
+    if (!needle) return true;
+    return [order.id, order.customer, order.phone].join(" ").toLowerCase().includes(needle);
+  });
   const revenue = orders
     .filter((order) => order.status !== "cancelled")
     .reduce((total, order) => total + order.amount, 0);
@@ -90,7 +98,7 @@ async function handle(req, res) {
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/orders/order") {
-    return send(res, 200, summary(url.searchParams.get("status") || ""));
+    return send(res, 200, summary(url.searchParams.get("status") || "", url.searchParams.get("q") || ""));
   }
 
   const detailMatch = url.pathname.match(/^\/api\/orders\/order\/(\d+)$/);
@@ -108,7 +116,7 @@ async function handle(req, res) {
   if (req.method === "POST" && statusMatch) {
     assertAdmin(roleOf(req));
     const body = await readBody(req);
-    const locked = ["customer", "phone", "address", "amount", "shippingFee", "payment", "carrier"];
+    const locked = ["customer", "phone", "address", "amount", "shippingFee", "payment", "carrier", "items"];
     if (locked.some((field) => field in body)) {
       rejectWrite("Admin không được sửa tiền hoặc thông tin khách");
     }

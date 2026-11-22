@@ -23,6 +23,7 @@
       <div class="muted">Doanh thu</div>
       <strong id="revenue"></strong>
       <p class="muted">Khách, số điện thoại, địa chỉ, tiền hàng và phí ship chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+      <p><input id="q" placeholder="Mã đơn, tên, SĐT khách" /></p>
       <p>
         <button data-filter="">Tất cả</button>
         <button data-filter="pending">Chờ xác nhận</button>
@@ -52,7 +53,11 @@
         <button data-open="${order.id}">Chi tiết</button>`;
     }
     async function load() {
-      const data = await fetch("/api/orders/order" + (filter ? `?status=${filter}` : "")).then((res) => res.json());
+      const params = new URLSearchParams();
+      if (filter) params.set("status", filter);
+      const q = document.getElementById("q").value.trim();
+      if (q) params.set("q", q);
+      const data = await fetch("/api/orders/order" + (params.toString() ? `?${params}` : "")).then((res) => res.json());
       document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
       document.getElementById("rows").innerHTML = data.orders.map((order) => `
         <tr>
@@ -75,6 +80,7 @@
         <p>Phí ship: ${money.format(order.shippingFee)}đ</p>
         <p>Thanh toán: ${order.payment} · ${order.carrier}</p>
         <p>Trạng thái: ${order.statusLabel}</p>
+        <ul>${order.items.map((item) => `<li>${item.name} × ${item.quantity} — ${money.format(item.price)}đ</li>`).join("")}</ul>
         <div>${actions(order)}</div>`;
     }
     document.querySelector("main").onclick = async (event) => {
@@ -105,6 +111,7 @@
       if (!res.ok) alert((await res.json()).error);
       await load();
     };
+    document.getElementById("q").addEventListener("input", load);
     load();
   </script>
 </body>
