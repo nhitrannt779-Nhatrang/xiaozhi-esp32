@@ -1,6 +1,7 @@
 const assert = require("assert");
 const http = require("http");
 const { changeStatus } = require("./policy");
+const { kvStore } = require("./api");
 const { createServer } = require("./server");
 
 function request(port, method, path, body, headers = {}) {
@@ -33,6 +34,24 @@ async function main() {
   assert.throws(() => changeStatus(pending, "delivered"), /Chỉ chuyển/);
   assert.throws(() => changeStatus(pending, "cancelled"), /lý do/);
   assert.strictEqual(changeStatus(pending, "cancelled", "khách hủy").status, "cancelled");
+
+  let reads = 0;
+  const kv = {
+    async get() {
+      reads += 1;
+      return null;
+    },
+    async put() {},
+  };
+  const store = kvStore(kv, 5000);
+  const first = await store.load();
+  const second = await store.load();
+  assert.strictEqual(reads, 1);
+  assert.strictEqual(second[0].id, first[0].id);
+  await store.save([{ id: "1", status: "pending", amount: 1, customer: "A", phone: "" }]);
+  const third = await store.load();
+  assert.strictEqual(reads, 1);
+  assert.strictEqual(third[0].id, "1");
 
   const server = createServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

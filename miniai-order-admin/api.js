@@ -83,19 +83,22 @@ function memoryStore(initial = seedOrders()) {
   };
 }
 
-function kvStore(kv) {
+function kvStore(kv, ttlMs = 5000) {
+  let cache = null;
+  let cacheAt = 0;
   return {
     async load() {
+      if (cache && Date.now() - cacheAt < ttlMs) return cache;
       const raw = await kv.get("orders");
-      if (!raw) {
-        const seeded = seedOrders();
-        await kv.put("orders", JSON.stringify(seeded));
-        return seeded;
-      }
-      return JSON.parse(raw);
+      cache = raw ? JSON.parse(raw) : seedOrders();
+      cacheAt = Date.now();
+      if (!raw) await kv.put("orders", JSON.stringify(cache));
+      return cache;
     },
-    save(next) {
-      return kv.put("orders", JSON.stringify(next));
+    async save(next) {
+      cache = next;
+      cacheAt = Date.now();
+      await kv.put("orders", JSON.stringify(next));
     },
   };
 }
