@@ -62,6 +62,9 @@ async function handle(req, res) {
   if (req.method === "POST" && statusMatch) {
     assertAdmin(roleOf(req));
     const body = await readBody(req);
+    if ("customer" in body || "amount" in body) {
+      rejectWrite("Admin không được sửa tiền hoặc thông tin khách");
+    }
     const order = orders.find((item) => item.id === statusMatch[1]);
     if (!order) {
       const error = new Error("Không thấy đơn");
@@ -78,7 +81,7 @@ async function handle(req, res) {
     rejectWrite("Admin không được xóa đơn");
   }
 
-  if (req.method === "PATCH" && /^\/api\/orders\/order\/\d+$/.test(url.pathname)) {
+  if ((req.method === "PATCH" || req.method === "PUT") && /^\/api\/orders\/order\/\d+$/.test(url.pathname)) {
     assertAdmin(roleOf(req));
     rejectWrite("Admin không được sửa tiền hoặc thông tin khách");
   }

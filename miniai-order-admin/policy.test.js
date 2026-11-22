@@ -48,6 +48,15 @@ async function main() {
     const edited = await request(port, "PATCH", "/api/orders/order/10482", { amount: 1 });
     assert.strictEqual(edited.status, 403);
 
+    const replaced = await request(port, "PUT", "/api/orders/order/10482", { customer: "Khác" });
+    assert.strictEqual(replaced.status, 403);
+
+    const smuggled = await request(port, "POST", "/api/orders/order/10482/status", {
+      status: "shipping",
+      amount: 1,
+    });
+    assert.strictEqual(smuggled.status, 403);
+
     const jumped = await request(port, "POST", "/api/orders/order/10482/status", { status: "delivered" });
     assert.strictEqual(jumped.status, 403);
 

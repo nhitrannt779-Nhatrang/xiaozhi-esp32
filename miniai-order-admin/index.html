@@ -2,23 +2,35 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Đơn hàng</title>
   <style>
-    body { font-family: Inter, sans-serif; margin: 24px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #ddd; text-align: left; padding: 8px; }
+    body { font-family: Inter, sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
+    header { background: #111; color: #fff; padding: 16px 24px; }
+    main { padding: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .muted { color: #667085; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #eee; }
     button { margin-right: 8px; }
+    input[readonly] { border: 0; background: transparent; width: 100%; color: inherit; }
   </style>
 </head>
 <body>
-  <h1>Đơn hàng</h1>
-  <p>Doanh thu: <strong id="revenue"></strong></p>
-  <table>
-    <thead>
-      <tr><th>Mã</th><th>Khách</th><th>Tiền</th><th>Trạng thái</th><th></th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <header>MiniAI · Đơn hàng</header>
+  <main>
+    <section class="card">
+      <div class="muted">Doanh thu</div>
+      <strong id="revenue"></strong>
+      <p class="muted">Khách và số tiền chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+    </section>
+    <table>
+      <thead>
+        <tr><th>Mã</th><th>Khách</th><th>Tiền</th><th>Trạng thái</th><th>Thao tác</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
   <script>
     const money = new Intl.NumberFormat("vi-VN");
     async function load() {
@@ -27,8 +39,8 @@
       document.getElementById("rows").innerHTML = data.orders.map((order) => `
         <tr>
           <td>#${order.id}</td>
-          <td>${order.customer}</td>
-          <td>${money.format(order.amount)}đ</td>
+          <td><input readonly value="${order.customer}" /></td>
+          <td><input readonly value="${money.format(order.amount)}đ" /></td>
           <td>${order.statusLabel}${order.cancelReason ? " (" + order.cancelReason + ")" : ""}</td>
           <td>
             ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
@@ -51,10 +63,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const error = await res.json();
-        alert(error.error);
-      }
+      if (!res.ok) alert((await res.json()).error);
       await load();
     };
     load();
