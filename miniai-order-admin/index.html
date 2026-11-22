@@ -19,6 +19,8 @@
     button { margin-right: 8px; }
     .ended { color: #667085; }
     .overlay { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.45); display: flex; align-items: center; justify-content: center; }
+    .overlay[hidden] { display: none; }
+    #notice.ok { background: #ecfdf3; color: #067647; }
     .modal { background: #fff; border-radius: 12px; padding: 20px; width: min(420px, calc(100% - 32px)); }
     textarea { width: 100%; min-height: 96px; margin: 12px 0; border: 1px solid #d0d5dd; border-radius: 8px; padding: 8px; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -30,7 +32,7 @@
     <section class="card">
       <div class="muted">Doanh thu</div>
       <strong id="revenue"></strong>
-      <p class="muted">Khách, số điện thoại, địa chỉ, tiền hàng và phí ship chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+      <p class="muted">Dữ liệu mẫu trong bộ nhớ của lần chạy này. Khách, điện thoại, địa chỉ và số tiền chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
       <p><input id="q" placeholder="Mã đơn, tên, SĐT khách" /></p>
       <div id="notice"></div>
       <p>
@@ -64,6 +66,7 @@
     const money = new Intl.NumberFormat("vi-VN");
     let filter = "";
     let cancelId = "";
+    let openId = "";
     function escapeHtml(value) {
       return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -97,7 +100,7 @@
       if (q) params.set("q", q);
       const data = await fetch("/api/orders/order" + (params.toString() ? `?${params}` : "")).then((res) => res.json());
       document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
-      document.getElementById("rows").innerHTML = data.orders.map((order) => `
+      const rows = data.orders.map((order) => `
         <tr>
           <td>#${escapeHtml(order.id)}</td>
           <td>${escapeHtml(order.customer)}<br><span class="muted">${escapeHtml(order.phone)}</span></td>
@@ -106,8 +109,16 @@
           <td>${escapeHtml(order.statusLabel)}${order.cancelReason ? " (" + escapeHtml(order.cancelReason) + ")" : ""}</td>
           <td>${actions(order)}</td>
         </tr>`).join("");
+      document.getElementById("rows").innerHTML = rows || `<tr><td colspan="6">Không có đơn khớp bộ lọc.</td></tr>`;
+    }
+    function showNotice(message, ok) {
+      const notice = document.getElementById("notice");
+      notice.style.display = "block";
+      notice.classList.toggle("ok", ok);
+      notice.textContent = message;
     }
     async function openDetail(id) {
+      openId = id;
       const order = await fetch(`/api/orders/order/${id}`).then((res) => res.json());
       document.getElementById("detail").innerHTML = `
         <h2>Chi tiết #${escapeHtml(order.id)}</h2>
@@ -152,16 +163,15 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: button.dataset.status }),
       });
-      const notice = document.getElementById("notice");
       if (!res.ok) {
         button.disabled = false;
         button.textContent = label;
-        notice.style.display = "block";
-        notice.textContent = await readError(res);
+        showNotice(await readError(res), false);
         return;
       }
-      notice.style.display = "none";
+      showNotice("Đã cập nhật trạng thái.", true);
       await load();
+      if (openId) await openDetail(openId);
     };
     const reasonBox = document.getElementById("cancel-reason");
     reasonBox.addEventListener("input", () => {
@@ -181,16 +191,15 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: "cancelled", reason }),
       });
-      const notice = document.getElementById("notice");
       if (!res.ok) {
         confirm.disabled = false;
-        notice.style.display = "block";
-        notice.textContent = await readError(res);
+        showNotice(await readError(res), false);
         return;
       }
-      notice.style.display = "none";
+      showNotice("Đã hủy đơn.", true);
       document.getElementById("cancel-modal").hidden = true;
       await load();
+      if (openId) await openDetail(openId);
     };
     let searchTimeout;
     document.getElementById("q").addEventListener("input", () => {
