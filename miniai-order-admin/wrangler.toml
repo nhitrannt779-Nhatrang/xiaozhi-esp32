@@ -1,0 +1,8 @@
+name = "miniai-order-admin"
+pages_build_output_dir = "."
+compatibility_date = "2026-11-22"
+
+# Tạo namespace ORDERS trên Cloudflare rồi thay id trước khi deploy.
+[[kv_namespaces]]
+binding = "ORDERS"
+id = "replace-with-orders-kv-id"
