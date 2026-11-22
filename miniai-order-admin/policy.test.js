@@ -1,7 +1,8 @@
 const assert = require("assert");
 const http = require("http");
 const { changeStatus } = require("./policy");
-const { kvStore } = require("./api");
+const { kvStore, handleApi } = require("./api");
+const { seedOrders } = require("./seed");
 const { createServer } = require("./server");
 
 function request(port, method, path, body, headers = {}) {
@@ -52,6 +53,55 @@ async function main() {
   const third = await store.load();
   assert.strictEqual(reads, 1);
   assert.strictEqual(third[0].id, "1");
+
+  let version = 1;
+  let stored = seedOrders();
+  const versioned = kvStore(
+    {
+      async getWithMetadata() {
+        return { value: stored, metadata: { version } };
+      },
+      async put(_key, raw, options) {
+        stored = JSON.parse(raw);
+        version = options.metadata.version;
+      },
+    },
+    5000
+  );
+  await versioned.load();
+  version = 9;
+  await assert.rejects(() => versioned.save(stored), /thử lại/);
+  versioned.invalidate();
+  await versioned.load();
+  assert.strictEqual(version, 9);
+
+  let saves = 0;
+  const retryStore = {
+    orders: seedOrders(),
+    async load() {
+      return this.orders;
+    },
+    async save(next) {
+      saves += 1;
+      if (saves === 1) {
+        const error = new Error("Đơn vừa được cập nhật, thử lại");
+        error.status = 409;
+        throw error;
+      }
+      this.orders = next;
+    },
+    invalidate() {},
+  };
+  const retried = await handleApi(
+    new Request("http://127.0.0.1/api/orders/order/10482/status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "shipping" }),
+    }),
+    retryStore
+  );
+  assert.strictEqual(retried.status, 200);
+  assert.strictEqual(saves, 2);
 
   const server = createServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
