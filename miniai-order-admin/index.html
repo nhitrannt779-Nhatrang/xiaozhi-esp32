@@ -2,42 +2,104 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Đơn hàng</title>
   <style>
-    body { font-family: Inter, sans-serif; margin: 24px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #ddd; text-align: left; padding: 8px; }
+    body { font-family: Inter, sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
+    header { background: #111; color: #fff; padding: 16px 24px; }
+    main { padding: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .muted { color: #667085; font-size: 14px; }
+    #notice { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #fff4f2; color: #b42318; }
+    #q, button { padding: 8px 12px; border-radius: 8px; }
+    #q { border: 1px solid #d0d5dd; min-width: 240px; }
+    button { border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #eee; }
     button { margin-right: 8px; }
+    input[readonly] { border: 0; background: transparent; width: 100%; color: inherit; }
   </style>
 </head>
 <body>
-  <h1>Đơn hàng</h1>
-  <p>Doanh thu: <strong id="revenue"></strong></p>
-  <table>
-    <thead>
-      <tr><th>Mã</th><th>Khách</th><th>Tiền</th><th>Trạng thái</th><th></th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <header>MiniAI · Đơn hàng</header>
+  <main>
+    <section class="card">
+      <div class="muted">Doanh thu</div>
+      <strong id="revenue"></strong>
+      <p class="muted">Khách, số điện thoại, địa chỉ, tiền hàng và phí ship chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
+      <p><input id="q" placeholder="Mã đơn, tên, SĐT khách" /></p>
+      <div id="notice"></div>
+      <p>
+        <button data-filter="">Tất cả</button>
+        <button data-filter="pending">Chờ xác nhận</button>
+        <button data-filter="shipping">Đang giao</button>
+        <button data-filter="delivered">Đã giao</button>
+        <button data-filter="cancelled">Đã hủy</button>
+      </p>
+    </section>
+    <table>
+      <thead>
+        <tr>
+          <th>Mã</th><th>Khách hàng</th><th>Hàng và tiền</th><th>Thanh toán và giao hàng</th><th>Trạng thái</th><th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <section class="card" id="detail"></section>
+  </main>
   <script>
     const money = new Intl.NumberFormat("vi-VN");
+    let filter = "";
+    function actions(order) {
+      return `
+        ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
+        ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
+        ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
+        <button data-open="${order.id}">Chi tiết</button>`;
+    }
     async function load() {
-      const data = await fetch("/api/orders/order").then((res) => res.json());
+      const params = new URLSearchParams();
+      if (filter) params.set("status", filter);
+      const q = document.getElementById("q").value.trim();
+      if (q) params.set("q", q);
+      const data = await fetch("/api/orders/order" + (params.toString() ? `?${params}` : "")).then((res) => res.json());
       document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
       document.getElementById("rows").innerHTML = data.orders.map((order) => `
         <tr>
           <td>#${order.id}</td>
-          <td>${order.customer}</td>
-          <td>${money.format(order.amount)}đ</td>
+          <td>${order.customer}<br><span class="muted">${order.phone}</span></td>
+          <td>${money.format(order.amount)}đ<br><span class="muted">Ship ${money.format(order.shippingFee)}đ</span></td>
+          <td>${order.payment}<br><span class="muted">${order.carrier}</span></td>
           <td>${order.statusLabel}${order.cancelReason ? " (" + order.cancelReason + ")" : ""}</td>
-          <td>
-            ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
-            ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
-            ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
-          </td>
+          <td>${actions(order)}</td>
         </tr>`).join("");
     }
-    document.getElementById("rows").onclick = async (event) => {
+    async function openDetail(id) {
+      const order = await fetch(`/api/orders/order/${id}`).then((res) => res.json());
+      document.getElementById("detail").innerHTML = `
+        <h2>Chi tiết #${order.id}</h2>
+        <p>Khách: ${order.customer}</p>
+        <p>Điện thoại: ${order.phone}</p>
+        <p>Địa chỉ: ${order.address}</p>
+        <p>Giá trị: ${money.format(order.amount)}đ</p>
+        <p>Phí ship: ${money.format(order.shippingFee)}đ</p>
+        <p>Thanh toán: ${order.payment} · ${order.carrier}</p>
+        <p>Trạng thái: ${order.statusLabel}</p>
+        <ul>${order.items.map((item) => `<li>${item.name} × ${item.quantity} — ${money.format(item.price)}đ</li>`).join("")}</ul>
+        <div>${actions(order)}</div>`;
+    }
+    document.querySelector("main").onclick = async (event) => {
+      const filterButton = event.target.closest("[data-filter]");
+      if (filterButton) {
+        filter = filterButton.dataset.filter;
+        await load();
+        return;
+      }
+      const open = event.target.closest("[data-open]");
+      if (open) {
+        await openDetail(open.dataset.open);
+        return;
+      }
       const button = event.target.closest("button");
       if (!button) return;
       const body = { status: button.dataset.status };
@@ -51,12 +113,16 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+      const notice = document.getElementById("notice");
       if (!res.ok) {
-        const error = await res.json();
-        alert(error.error);
+        notice.style.display = "block";
+        notice.textContent = (await res.json()).error;
+        return;
       }
+      notice.style.display = "none";
       await load();
     };
+    document.getElementById("q").addEventListener("input", load);
     load();
   </script>
 </body>
