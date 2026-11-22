@@ -17,7 +17,11 @@
     table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
     th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #eee; }
     button { margin-right: 8px; }
-    input[readonly] { border: 0; background: transparent; width: 100%; color: inherit; }
+    .ended { color: #667085; }
+    .overlay { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.45); display: flex; align-items: center; justify-content: center; }
+    .modal { background: #fff; border-radius: 12px; padding: 20px; width: min(420px, calc(100% - 32px)); }
+    textarea { width: 100%; min-height: 96px; margin: 12px 0; border: 1px solid #d0d5dd; border-radius: 8px; padding: 8px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -47,15 +51,27 @@
     </table>
     <section class="card" id="detail"></section>
   </main>
+  <div id="cancel-modal" class="overlay" hidden>
+    <form class="modal" id="cancel-form">
+      <h2 id="cancel-title">Hủy đơn</h2>
+      <p>Vui lòng nhập lý do hủy đơn.</p>
+      <textarea id="cancel-reason" placeholder="Ví dụ: Khách không nhận, sai địa chỉ"></textarea>
+      <button type="button" id="cancel-close">Đóng</button>
+      <button type="submit" id="cancel-confirm" disabled>Xác nhận hủy</button>
+    </form>
+  </div>
   <script>
     const money = new Intl.NumberFormat("vi-VN");
     let filter = "";
+    let cancelId = "";
     function actions(order) {
-      return `
-        ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
-        ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
-        ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
-        <button data-open="${order.id}">Chi tiết</button>`;
+      if (order.status === "delivered" || order.status === "cancelled") {
+        return `<span class="ended">Đã kết thúc</span> <button data-open="${order.id}">Chi tiết</button>`;
+      }
+      const next = order.status === "pending"
+        ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>`
+        : `<button data-id="${order.id}" data-status="delivered">Đã giao</button>`;
+      return `${next}<button type="button" data-cancel="${order.id}">Hủy đơn</button><button data-open="${order.id}">Chi tiết</button>`;
     }
     async function load() {
       const params = new URLSearchParams();
@@ -100,18 +116,21 @@
         await openDetail(open.dataset.open);
         return;
       }
-      const button = event.target.closest("button");
-      if (!button) return;
-      const body = { status: button.dataset.status };
-      if (body.status === "cancelled") {
-        const reason = prompt("Lý do hủy");
-        if (!reason) return;
-        body.reason = reason;
+      const cancel = event.target.closest("[data-cancel]");
+      if (cancel) {
+        cancelId = cancel.dataset.cancel;
+        document.getElementById("cancel-title").textContent = `Hủy đơn #${cancelId}`;
+        document.getElementById("cancel-reason").value = "";
+        document.getElementById("cancel-confirm").disabled = true;
+        document.getElementById("cancel-modal").hidden = false;
+        return;
       }
+      const button = event.target.closest("button");
+      if (!button || !button.dataset.status) return;
       const res = await fetch(`/api/orders/order/${button.dataset.id}/status`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ status: button.dataset.status }),
       });
       const notice = document.getElementById("notice");
       if (!res.ok) {
@@ -120,6 +139,32 @@
         return;
       }
       notice.style.display = "none";
+      await load();
+    };
+    const reasonBox = document.getElementById("cancel-reason");
+    reasonBox.addEventListener("input", () => {
+      document.getElementById("cancel-confirm").disabled = !reasonBox.value.trim();
+    });
+    document.getElementById("cancel-close").onclick = () => {
+      document.getElementById("cancel-modal").hidden = true;
+    };
+    document.getElementById("cancel-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const reason = reasonBox.value.trim();
+      if (!reason) return;
+      const res = await fetch(`/api/orders/order/${cancelId}/status`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", reason }),
+      });
+      const notice = document.getElementById("notice");
+      if (!res.ok) {
+        notice.style.display = "block";
+        notice.textContent = (await res.json()).error;
+        return;
+      }
+      notice.style.display = "none";
+      document.getElementById("cancel-modal").hidden = true;
       await load();
     };
     document.getElementById("q").addEventListener("input", load);
