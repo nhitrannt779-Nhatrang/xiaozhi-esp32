@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Đơn hàng</title>
+  <style>
+    body { font-family: Inter, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; text-align: left; padding: 8px; }
+    button { margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Đơn hàng</h1>
+  <p>Doanh thu: <strong id="revenue"></strong></p>
+  <table>
+    <thead>
+      <tr><th>Mã</th><th>Khách</th><th>Tiền</th><th>Trạng thái</th><th></th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <script>
+    const money = new Intl.NumberFormat("vi-VN");
+    async function load() {
+      const data = await fetch("/api/orders/order").then((res) => res.json());
+      document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
+      document.getElementById("rows").innerHTML = data.orders.map((order) => `
+        <tr>
+          <td>#${order.id}</td>
+          <td>${order.customer}</td>
+          <td>${money.format(order.amount)}đ</td>
+          <td>${order.statusLabel}${order.cancelReason ? " (" + order.cancelReason + ")" : ""}</td>
+          <td>
+            ${order.status === "pending" ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>` : ""}
+            ${order.status === "shipping" ? `<button data-id="${order.id}" data-status="delivered">Đã giao</button>` : ""}
+            ${order.status === "pending" || order.status === "shipping" ? `<button data-id="${order.id}" data-status="cancelled">Hủy</button>` : ""}
+          </td>
+        </tr>`).join("");
+    }
+    document.getElementById("rows").onclick = async (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const body = { status: button.dataset.status };
+      if (body.status === "cancelled") {
+        const reason = prompt("Lý do hủy");
+        if (!reason) return;
+        body.reason = reason;
+      }
+      const res = await fetch(`/api/orders/order/${button.dataset.id}/status`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        alert(error.error);
+      }
+      await load();
+    };
+    load();
+  </script>
+</body>
+</html>
