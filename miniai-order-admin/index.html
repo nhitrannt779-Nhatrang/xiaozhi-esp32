@@ -64,14 +64,31 @@
     const money = new Intl.NumberFormat("vi-VN");
     let filter = "";
     let cancelId = "";
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+    async function readError(res) {
+      try {
+        const data = await res.json();
+        return data.error || `Lỗi hệ thống (${res.status})`;
+      } catch (error) {
+        return `Lỗi hệ thống (${res.status})`;
+      }
+    }
     function actions(order) {
       if (order.status === "delivered" || order.status === "cancelled") {
-        return `<span class="ended">Đã kết thúc</span> <button data-open="${order.id}">Chi tiết</button>`;
+        return `<span class="ended">Đã kết thúc</span> <button data-open="${escapeHtml(order.id)}">Chi tiết</button>`;
       }
+      const id = escapeHtml(order.id);
       const next = order.status === "pending"
-        ? `<button data-id="${order.id}" data-status="shipping">Xác nhận giao</button>`
-        : `<button data-id="${order.id}" data-status="delivered">Đã giao</button>`;
-      return `${next}<button type="button" data-cancel="${order.id}">Hủy đơn</button><button data-open="${order.id}">Chi tiết</button>`;
+        ? `<button data-id="${id}" data-status="shipping">Xác nhận giao</button>`
+        : `<button data-id="${id}" data-status="delivered">Đã giao</button>`;
+      return `${next}<button type="button" data-cancel="${id}">Hủy đơn</button><button data-open="${id}">Chi tiết</button>`;
     }
     async function load() {
       const params = new URLSearchParams();
@@ -82,26 +99,26 @@
       document.getElementById("revenue").textContent = money.format(data.revenue) + "đ";
       document.getElementById("rows").innerHTML = data.orders.map((order) => `
         <tr>
-          <td>#${order.id}</td>
-          <td>${order.customer}<br><span class="muted">${order.phone}</span></td>
+          <td>#${escapeHtml(order.id)}</td>
+          <td>${escapeHtml(order.customer)}<br><span class="muted">${escapeHtml(order.phone)}</span></td>
           <td>${money.format(order.amount)}đ<br><span class="muted">Ship ${money.format(order.shippingFee)}đ</span></td>
-          <td>${order.payment}<br><span class="muted">${order.carrier}</span></td>
-          <td>${order.statusLabel}${order.cancelReason ? " (" + order.cancelReason + ")" : ""}</td>
+          <td>${escapeHtml(order.payment)}<br><span class="muted">${escapeHtml(order.carrier)}</span></td>
+          <td>${escapeHtml(order.statusLabel)}${order.cancelReason ? " (" + escapeHtml(order.cancelReason) + ")" : ""}</td>
           <td>${actions(order)}</td>
         </tr>`).join("");
     }
     async function openDetail(id) {
       const order = await fetch(`/api/orders/order/${id}`).then((res) => res.json());
       document.getElementById("detail").innerHTML = `
-        <h2>Chi tiết #${order.id}</h2>
-        <p>Khách: ${order.customer}</p>
-        <p>Điện thoại: ${order.phone}</p>
-        <p>Địa chỉ: ${order.address}</p>
+        <h2>Chi tiết #${escapeHtml(order.id)}</h2>
+        <p>Khách: ${escapeHtml(order.customer)}</p>
+        <p>Điện thoại: ${escapeHtml(order.phone)}</p>
+        <p>Địa chỉ: ${escapeHtml(order.address)}</p>
         <p>Giá trị: ${money.format(order.amount)}đ</p>
         <p>Phí ship: ${money.format(order.shippingFee)}đ</p>
-        <p>Thanh toán: ${order.payment} · ${order.carrier}</p>
-        <p>Trạng thái: ${order.statusLabel}</p>
-        <ul>${order.items.map((item) => `<li>${item.name} × ${item.quantity} — ${money.format(item.price)}đ</li>`).join("")}</ul>
+        <p>Thanh toán: ${escapeHtml(order.payment)} · ${escapeHtml(order.carrier)}</p>
+        <p>Trạng thái: ${escapeHtml(order.statusLabel)}</p>
+        <ul>${order.items.map((item) => `<li>${escapeHtml(item.name)} × ${item.quantity} — ${money.format(item.price)}đ</li>`).join("")}</ul>
         <div>${actions(order)}</div>`;
     }
     document.querySelector("main").onclick = async (event) => {
@@ -126,7 +143,10 @@
         return;
       }
       const button = event.target.closest("button");
-      if (!button || !button.dataset.status) return;
+      if (!button || !button.dataset.status || button.disabled) return;
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = "Đang xử lý...";
       const res = await fetch(`/api/orders/order/${button.dataset.id}/status`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -134,8 +154,10 @@
       });
       const notice = document.getElementById("notice");
       if (!res.ok) {
+        button.disabled = false;
+        button.textContent = label;
         notice.style.display = "block";
-        notice.textContent = (await res.json()).error;
+        notice.textContent = await readError(res);
         return;
       }
       notice.style.display = "none";
@@ -151,7 +173,9 @@
     document.getElementById("cancel-form").onsubmit = async (event) => {
       event.preventDefault();
       const reason = reasonBox.value.trim();
-      if (!reason) return;
+      const confirm = document.getElementById("cancel-confirm");
+      if (!reason || confirm.disabled) return;
+      confirm.disabled = true;
       const res = await fetch(`/api/orders/order/${cancelId}/status`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -159,15 +183,20 @@
       });
       const notice = document.getElementById("notice");
       if (!res.ok) {
+        confirm.disabled = false;
         notice.style.display = "block";
-        notice.textContent = (await res.json()).error;
+        notice.textContent = await readError(res);
         return;
       }
       notice.style.display = "none";
       document.getElementById("cancel-modal").hidden = true;
       await load();
     };
-    document.getElementById("q").addEventListener("input", load);
+    let searchTimeout;
+    document.getElementById("q").addEventListener("input", () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(load, 300);
+    });
     load();
   </script>
 </body>
