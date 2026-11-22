@@ -10,6 +10,10 @@
     main { padding: 24px; }
     .card { background: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
     .muted { color: #667085; font-size: 14px; }
+    #notice { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #fff4f2; color: #b42318; }
+    #q, button { padding: 8px 12px; border-radius: 8px; }
+    #q { border: 1px solid #d0d5dd; min-width: 240px; }
+    button { border: 1px solid #d0d5dd; background: #fff; cursor: pointer; }
     table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
     th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #eee; }
     button { margin-right: 8px; }
@@ -24,6 +28,7 @@
       <strong id="revenue"></strong>
       <p class="muted">Khách, số điện thoại, địa chỉ, tiền hàng và phí ship chỉ xem. Không xóa đơn. Chỉ chuyển chờ xác nhận → đang giao → đã giao, hoặc hủy kèm lý do.</p>
       <p><input id="q" placeholder="Mã đơn, tên, SĐT khách" /></p>
+      <div id="notice"></div>
       <p>
         <button data-filter="">Tất cả</button>
         <button data-filter="pending">Chờ xác nhận</button>
@@ -108,7 +113,13 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) alert((await res.json()).error);
+      const notice = document.getElementById("notice");
+      if (!res.ok) {
+        notice.style.display = "block";
+        notice.textContent = (await res.json()).error;
+        return;
+      }
+      notice.style.display = "none";
       await load();
     };
     document.getElementById("q").addEventListener("input", load);
